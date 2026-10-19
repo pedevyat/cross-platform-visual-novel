@@ -19,9 +19,9 @@ const heroRight = require('../../assets/images/hero2.webp');
 
 export function NovelScene({ speaker, text, choices, onNext, onChoose }: Props) {
   return (
-    <View style={styles.root}>
+    <Pressable style={styles.root} onPress={onNext} disabled={!onNext}>
       {/* Реплика: пузырь над говорящим героем */}
-      <Pressable style={styles.dialogueZone} onPress={onNext} disabled={!onNext}>
+      <View style={styles.dialogueZone}>
         {text !== '' && (
           <View
             style={[
@@ -40,8 +40,8 @@ export function NovelScene({ speaker, text, choices, onNext, onChoose }: Props) 
             />
           </View>
         )}
-      </Pressable>
-
+      </View>
+ 
       {/* Герои */}
       <View style={styles.heroes}>
         <Image
@@ -55,7 +55,7 @@ export function NovelScene({ speaker, text, choices, onNext, onChoose }: Props) 
           style={[styles.hero, speaker !== 'right' && styles.dimmed]}
         />
       </View>
-
+ 
       {/* Варианты ответа */}
       <View style={styles.choices}>
         {choices.map((c) => (
@@ -68,7 +68,7 @@ export function NovelScene({ speaker, text, choices, onNext, onChoose }: Props) 
           </Pressable>
         ))}
       </View>
-    </View>
+    </Pressable>
   );
 }
 

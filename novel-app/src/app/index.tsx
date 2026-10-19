@@ -1,16 +1,16 @@
-import NovelScene from '../components/NovelScene';
+import { NovelScene } from '../components/NovelScene';
+import { useInkStory } from '../hooks/useInkStory';
 
 export default function Index() {
-  // Временные заглушки: позже сюда подключится inkjs
+  const { scene, next, choose } = useInkStory();
+
   return (
     <NovelScene
-      speaker="left"
-      text="Здесь будет реплика героя."
-      choices={[
-        { index: 0, text: 'Вариант ответа 1' },
-        { index: 1, text: 'Вариант ответа 2' },
-      ]}
-      onChoose={(i) => console.log('выбран вариант', i)}
+      speaker={scene.speaker}
+      text={scene.text}
+      choices={scene.choices}
+      onNext={scene.canNext ? next : undefined}
+      onChoose={choose}
     />
   );
 }

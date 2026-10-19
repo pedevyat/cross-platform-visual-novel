@@ -1,39 +1,45 @@
 import { View, Text, Image, Pressable, StyleSheet } from 'react-native';
-
-export type Side = 'left' | 'right';
-
-export type Choice = { index: number; text: string };
+import type { Choice, Side } from './types';
 
 type Props = {
-  /** Кто говорит сейчас: левый или правый герой */
+  /** Кто говорит сейчас: left = герой 1 (игрок), right = герой 2 (собеседник) */
   speaker: Side;
   /** Текст реплики */
   text: string;
   /** Варианты ответа (внизу экрана) */
   choices: Choice[];
-  /** Тап по реплике (следующая реплика), если вариантов нет */
+  /** Тап по реплике (следующая реплика) */
   onNext?: () => void;
   onChoose: (index: number) => void;
 };
 
-// Положите изображения героев сюда (или поменяйте пути):
+// Пути от src/components до novel-app/assets. Поправьте имена файлов при необходимости.
 const heroLeft = require('../../assets/images/hero1.webp');
 const heroRight = require('../../assets/images/hero2.webp');
 
-export default function NovelScene({ speaker, text, choices, onNext, onChoose }: Props) {
+export function NovelScene({ speaker, text, choices, onNext, onChoose }: Props) {
   return (
     <View style={styles.root}>
-      {/* Реплика: пузырь над активным героем */}
-      <Pressable style={styles.dialogueZone} onPress={onNext} disabled={choices.length > 0}>
-        <View
-          style={[
-            styles.bubble,
-            speaker === 'left' ? styles.bubbleLeft : styles.bubbleRight,
-          ]}
-        >
-          <Text style={styles.bubbleText}>{text}</Text>
-          <View style={[styles.tail, speaker === 'left' ? { left: 40 } : { right: 40 }]} />
-        </View>
+      {/* Реплика: пузырь над говорящим героем */}
+      <Pressable style={styles.dialogueZone} onPress={onNext} disabled={!onNext}>
+        {text !== '' && (
+          <View
+            style={[
+              styles.bubble,
+              speaker === 'left' ? styles.bubbleLeft : styles.bubbleRight,
+              speaker === 'left' && styles.bubblePlayer,
+            ]}
+          >
+            <Text style={styles.bubbleText}>{text}</Text>
+            <View
+              style={[
+                styles.tail,
+                speaker === 'left' ? { left: 40 } : { right: 40 },
+                speaker === 'left' && styles.tailPlayer,
+              ]}
+            />
+          </View>
+        )}
       </Pressable>
 
       {/* Герои */}
@@ -91,6 +97,7 @@ const styles = StyleSheet.create({
   },
   bubbleLeft: { alignSelf: 'flex-start' },
   bubbleRight: { alignSelf: 'flex-end' },
+  bubblePlayer: { backgroundColor: '#cfe0ff' },
   bubbleText: {
     fontSize: 18,
     lineHeight: 26,
@@ -105,6 +112,7 @@ const styles = StyleSheet.create({
     transform: [{ rotate: '45deg' }],
     borderBottomRightRadius: 4,
   },
+  tailPlayer: { backgroundColor: '#cfe0ff' },
   heroes: {
     flexDirection: 'row',
     justifyContent: 'space-around',

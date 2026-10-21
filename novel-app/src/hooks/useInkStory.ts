@@ -1,12 +1,16 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { AppState } from 'react-native';
 import { Story } from 'inkjs';
-import storyJson from '../../assets/story.json';
 import type { Choice, Side } from '../components/types';
+import { loadStory, type LoadedStory } from '../story/storyLoader';
+import { clearSave, readSave, writeSave } from '../story/saveStorage';
 
-/** Имя собеседника: префикс «Анна: » вырезается из реплик */
-const NPC_NAME = 'Анна';
+/** Имя собеседника: префикс «Лёха: » вырезается из реплик */
+const NPC_NAME = 'Лёха';
 /** Служебный индекс кнопки «Начать заново» */
 export const RESTART_INDEX = -1;
+/** Как часто проверять, не обновился ли сюжет на хостинге */
+const CHECK_INTERVAL_MS = 5 * 60 * 1000;
 
 const NPC_SIDE: Side = 'right'; // герой 2 (собеседник)
 const PLAYER_SIDE: Side = 'left'; // герой 1 (игрок)
@@ -18,6 +22,8 @@ type SceneState = {
   canNext: boolean;
 };
 
+export type Notice = { text: string } | null;
+
 const EMPTY: SceneState = { text: '', speaker: NPC_SIDE, choices: [], canNext: false };
 const RESTART: Choice = { index: RESTART_INDEX, text: 'Начать заново' };
 
@@ -27,13 +33,11 @@ const stripName = (line: string) =>
 const readChoices = (story: Story): Choice[] =>
   story.currentChoices.map((c) => ({ index: c.index, text: c.text }));
 
-/** Варианты ответа, а если история закончилась, то кнопка рестарта */
 const choicesOrRestart = (story: Story): Choice[] => {
   const choices = readChoices(story);
   return choices.length > 0 ? choices : [RESTART];
 };
 
-/** Следующая реплика собеседника (Анны) */
 function nextNpcLine(story: Story): SceneState {
   let text = '';
   while (story.canContinue && !text) {
@@ -47,30 +51,132 @@ function nextNpcLine(story: Story): SceneState {
   return {
     text,
     speaker: NPC_SIDE,
-    // варианты ответа показываем только после последней реплики блока
     choices: story.canContinue ? [] : choicesOrRestart(story),
     canNext: story.canContinue,
   };
 }
 
+function isScene(x: any): x is SceneState {
+  return (
+    !!x &&
+    typeof x.text === 'string' &&
+    (x.speaker === 'left' || x.speaker === 'right') &&
+    Array.isArray(x.choices) &&
+    typeof x.canNext === 'boolean'
+  );
+}
+
 export function useInkStory() {
   const storyRef = useRef<Story | null>(null);
+  const loadedRef = useRef<LoadedStory | null>(null); // версия, по которой идёт игра
+  const pendingRef = useRef<LoadedStory | null>(null); // более новая версия с хостинга
+  const dismissedRef = useRef<string | null>(null); // версия, от которой игрок отказался
+  const readyRef = useRef(false);
   const started = useRef(false);
-  const [scene, setScene] = useState<SceneState>(EMPTY);
 
-  const start = useCallback(() => {
-    const story = new Story(storyJson as any);
+  const [scene, setScene] = useState<SceneState>(EMPTY);
+  const [loading, setLoading] = useState(true);
+  const [notice, setNotice] = useState<Notice>(null);
+  const [updateAvailable, setUpdateAvailable] = useState(false);
+
+  /** Начать историю с начала по заданной версии сюжета */
+  const begin = useCallback((loaded: LoadedStory) => {
+    const story = new Story(loaded.json);
     storyRef.current = story;
+    loadedRef.current = loaded;
     setScene(nextNpcLine(story));
   }, []);
 
-  // Запуск после монтирования (не во время рендера), чтобы не было
-  // расхождения SSR и клиента
+  // Запуск: загрузка сюжета, затем восстановление сохранения (если оно подходит)
   useEffect(() => {
     if (started.current) return;
     started.current = true;
-    start();
-  }, [start]);
+
+    (async () => {
+      const loaded = await loadStory();
+      const save = await readSave();
+      let restored = false;
+
+      if (save) {
+        if (save.version === loaded.version && isScene(save.scene)) {
+          try {
+            const story = new Story(loaded.json);
+            story.state.LoadJson(save.state);
+            storyRef.current = story;
+            loadedRef.current = loaded;
+            setScene(save.scene);
+            restored = true;
+          } catch {
+            await clearSave(); // сохранение не загрузилось: начинаем заново
+          }
+        } else {
+          await clearSave();
+          if (save.version !== loaded.version) {
+            setNotice({ text: 'Сюжет обновился, поэтому игра начата заново.' });
+          }
+        }
+      }
+
+      if (!restored) begin(loaded);
+      readyRef.current = true;
+      setLoading(false);
+    })();
+  }, [begin]);
+
+  // Автосохранение после каждого изменения сцены
+  useEffect(() => {
+    if (!readyRef.current) return;
+    const story = storyRef.current;
+    const loaded = loadedRef.current;
+    if (!story || !loaded) return;
+    writeSave({ version: loaded.version, state: story.state.toJson(), scene });
+  }, [scene]);
+
+  // Проверка обновлений сюжета на хостинге
+  const checkForUpdate = useCallback(async () => {
+    const current = loadedRef.current;
+    if (!current) return;
+    const latest = await loadStory();
+    if (
+      latest.source === 'remote' &&
+      latest.version !== current.version &&
+      latest.version !== dismissedRef.current
+    ) {
+      pendingRef.current = latest;
+      setUpdateAvailable(true);
+    }
+  }, []);
+
+  useEffect(() => {
+    // 'active': приложение вернулось на передний план или вкладка снова видна
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'active') checkForUpdate();
+    });
+    const id = setInterval(checkForUpdate, CHECK_INTERVAL_MS);
+    return () => {
+      sub.remove();
+      clearInterval(id);
+    };
+  }, [checkForUpdate]);
+
+  /** Принять новую версию: старое сохранение сбрасывается, игра начинается заново */
+  const applyUpdate = useCallback(async () => {
+    const latest = pendingRef.current;
+    if (!latest) return;
+    pendingRef.current = null;
+    await clearSave();
+    begin(latest);
+    setUpdateAvailable(false);
+    setNotice(null);
+  }, [begin]);
+
+  /** Отказаться: баннер не показывается снова для этой версии */
+  const dismissUpdate = useCallback(() => {
+    dismissedRef.current = pendingRef.current?.version ?? null;
+    setUpdateAvailable(false);
+  }, []);
+
+  const dismissNotice = useCallback(() => setNotice(null), []);
 
   /** Тап по реплике: следующая строка собеседника */
   const next = useCallback(() => {
@@ -83,7 +189,8 @@ export function useInkStory() {
   const choose = useCallback(
     (index: number) => {
       if (index === RESTART_INDEX) {
-        start();
+        const loaded = loadedRef.current;
+        if (loaded) begin(loaded);
         return;
       }
       const story = storyRef.current;
@@ -96,11 +203,21 @@ export function useInkStory() {
         text: picked?.text ?? '',
         speaker: PLAYER_SIDE,
         choices: story.canContinue ? [] : choicesOrRestart(story),
-        canNext: story.canContinue, // следующий тап покажет ответ собеседника
+        canNext: story.canContinue,
       });
     },
-    [scene.choices, start]
+    [scene.choices, begin]
   );
 
-  return { scene, next, choose };
+  return {
+    scene,
+    loading,
+    next,
+    choose,
+    notice,
+    dismissNotice,
+    updateAvailable,
+    applyUpdate,
+    dismissUpdate,
+  };
 }

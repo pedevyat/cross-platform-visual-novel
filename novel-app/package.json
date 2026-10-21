@@ -5,8 +5,9 @@
   "dependencies": {
     "@expo/metro-runtime": "~58.0.14",
     "@expo/ui": "~58.0.20",
+    "@react-native-async-storage/async-storage": "2.2.0",
     "expo": "~58.0.14",
-    "expo-constants": "~58.0.12",
+    "expo-constants": "~58.0.13",
     "expo-device": "~58.0.5",
     "expo-font": "~58.0.8",
     "expo-glass-effect": "~58.0.4",
@@ -42,7 +43,8 @@
     "web": "expo start --web",
     "lint": "expo lint",
     "predeploy": "expo export -p web",
-    "deploy": "gh-pages --nojekyll -d dist"
+    "deploy": "gh-pages --nojekyll -d dist",
+    "sync-story": "node scripts/sync-story.js"
   },
   "private": true
 }

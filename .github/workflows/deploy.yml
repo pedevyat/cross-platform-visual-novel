@@ -31,6 +31,8 @@ jobs:
 
       - run: npm ci
 
+      - run: npm run sync-story
+
       - run: npx expo export -p web
 
       - uses: actions/upload-pages-artifact@v3

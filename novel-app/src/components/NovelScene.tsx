@@ -13,9 +13,9 @@ type Props = {
   onChoose: (index: number) => void;
 };
 
-// Пути от src/components до novel-app/assets. Поправьте имена файлов при необходимости.
 const heroLeft = require('../../assets/images/hero1.webp');
 const heroRight = require('../../assets/images/hero2.webp');
+// const background = require('../../assets/images/background.png');
 
 export function NovelScene({ speaker, text, choices, onNext, onChoose }: Props) {
   return (
